@@ -5,7 +5,7 @@ A PHP implementation of [Glicko2][1], a rating system for game ladders.
 Glicko2 is a refinement of the well-known [Elo][2] rating system that adds
 the concepts of rating deviation, volatility, and rating decay.
 
-This is a fork of Guangcong Luo's version, going straight from the PDF and trying
+This is a fork of Guangcong Luo's version, going straight from the [PDF][3] and trying
 to match exactly what the PDF states. I also confirmed the test case mentioned
 in the PDF was accurate, I believe Luo's version was not accurate - Therefore
 I created this. This also keeps tracks of wins/losses/draws for players.
@@ -18,6 +18,7 @@ tested that.
 
  [1]: http://en.wikipedia.org/wiki/Glicko_rating_system
  [2]: http://en.wikipedia.org/wiki/Elo_rating_system
+ [3]: http://www.glicko.net/glicko/glicko2.pdf
 
 Usage
 -----
@@ -54,7 +55,7 @@ Add wins, losses, and draws to a player:
 	$David->Update(); // David did not participate, but must be updated
 
 
-PDF Test case
+PDF Test case (see: http://www.glicko.net/glicko/glicko2.pdf)
 ------------------------
 
     $Todd = new Glicko2Player(1500,200);
