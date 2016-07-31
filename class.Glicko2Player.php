@@ -119,7 +119,7 @@ class Glicko2Player {
 
 
 		if (count($this->M) == 0) {
-			$phi_p = sqrt( ( $this->phi * $this->phi ) + ( $this->vol + $this->vol ) );
+			$phi_p = sqrt( ( $this->phi * $this->phi ) + ( $this->vol * $this->vol ) );
 			return array( 'r' => $this->rating, 'RD' => 173.7178 * $phi_p, 'mu' => $this->mu, 'phi' => $phi_p, 'vol' => $this->vol ) ;
 		}
 
