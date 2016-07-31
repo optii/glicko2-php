@@ -2,29 +2,15 @@
 
 /*******************************************************************************
 
-Corrected implementation of Glicko2
-
-License: LGPLv3
-
-Modified by Guangcong Luo on 2012 Sept 28
-<guangcongluo@gmail.com>
-
-Modified from Noah Smith's implementation, which contains a number of mathematical
-errors.
-
-His original documentation is reproduced below.
-
-*******************************************************************************
-
 glicko-2 ranking system
 
 Written by Noah Smith 2011, June 7
 megiddo ( @t ) thirdform ( dot ) com
 
-Based on http://www.glicko.net/glicko/glicko2.doc/example.html
+Based on http://www.glicko.net/glicko/glicko2.pdf
 
 Usage
-Glicko2Player([$rating = 1500 [, $rd = 350 [, $volatility = 0.06 [, $mu [, $phi [, $sigma [, $systemconstant = 0.75 ]]]]]]]
+Glicko2Player([$rating = 1500 [, $rd = 350 [, $volatility = 0.06 [, $mu [, $phi [, $systemconstant = 0.50 ]]]]]])
 	For new players, use the default values for rating, rd, and volatility.
 	The systemconstant should be between 0.3 and 1.2, depending on system itself (this is game dependent, and must be set
 		by estimation or experimentation)
@@ -33,24 +19,20 @@ Updating a Glicko2Player
 
 Add wins, losses, and draws to a player:
 
-	$Alice = new Glicko2Player();
-	$Bob = new Glicko2Player();
-	$Charlie = new Glicko2Player();
-	$David = new Glicko2Player();
+$Todd = new Glicko2Player(1500,200);
+$Alice = new Glicko2Player(1400,30);
+$Bob = new Glicko2Player(1550,100);
+$Charlie = new Glicko2Player(1700,300);
 
-	$Alice->AddWin($Bob);
-	$Alice->AddWin($Charlie)
+$Todd->AddWin($Alice);
+$Todd->AddLoss($Bob);
+$Todd->AddLoss($Charlie);
+$Todd->Update();
 
-	$Bob->AddLoss($Alice);
-	$Bob->AddWin($Charlie);
-
-	$Charlie->AddLoss($Alice);
-	$Charlie->AddLoss($Bob);
-
-	$Alice->Update();
-	$Bob->Update();
-	$Charlie->Update();
-	$David->Update(); // David did not participate, but must be updated
+var_dump($Todd);
+var_dump($Alice);
+$Alice->Update();
+var_dump($Alice);
 
 This message and the following may not be removed or modified:
 
@@ -60,28 +42,27 @@ Caveat Emptor
 *******************************************************************************/
 
 class Glicko2Player {
-	public $rating;
-	public $rd;
-	public $sigma;
+	public  $rating;
+	public  $rd;
+	public  $vol;
+	
+	public  $mu;
+	public  $phi;
+	public  $tau;
+	
+	public  $wins = 0;
+	public  $losses = 0;
+	
+	private $M = array();
 
-	public $mu;
-	public $phi;
-	public $tau;
-
-	private $pi2 = 9.8696044;
-
-	var $M = array();
-
-	function __construct($rating = 1500, $rd = 350, $volatility = 0.06, $mu = null, $phi = null, $sigma = null, $systemconstant = 0.75) {
+	function __construct($rating = 1500, $rd = 350, $volatility = 0.06, $mu = null, $phi = null, $systemconstant = 0.5) {
+		
 		// Step 1
 		$this->rating = $rating;
 		$this->rd = $rd;
 		// volatility
-		if (is_null($sigma)) {
-			$this->sigma = $volatility;
-		} else {
-			$this->sigma = $sigma;
-		}
+		$this->vol = $volatility;
+
 		// System Constant
 		$this->tau = $systemconstant;
 
@@ -101,24 +82,27 @@ class Glicko2Player {
 	}
 
 	function AddWin($OtherPlayer) {
-		$this->M[] = $OtherPlayer->MatchElement(1);
+		array_push($this->M, $OtherPlayer->MatchElement(1));
+		$this->wins++;
 	}
 
 	function AddLoss($OtherPlayer) {
-		$this->M[] = $OtherPlayer->MatchElement(0);
+		array_push($this->M, $OtherPlayer->MatchElement(0));
+		$this->losses++;
 	}
 
 	function AddDraw($OtherPlayer) {
-		$this->M[] = $OtherPlayer->MatchElement(0.5);
+		array_push($this->M, $OtherPlayer->MatchElement(0.5));
+		$this->draws++;
 	}
 
 	function Update() {
-		$Results = $this->AddMatches($this->M);
+		$Results = $this->AddMatches();
 		$this->rating = $Results['r'];
 		$this->rd = $Results['RD'];
 		$this->mu = $Results['mu'];
 		$this->phi = $Results['phi'];
-		$this->sigma = $Results['sigma'];
+		$this->vol = $Results['vol'];
 		$this->M = array();
 	}
 
@@ -126,74 +110,122 @@ class Glicko2Player {
 		return array( 'mu' => $this->mu, 'phi' => $this->phi, 'score' => $score );
 	}
 
-	function AddMatches($M) {
-		// This is where the Glicko2 rating calculation actually happens
+	function AddMatches() {
+		global $tausq;
+		global $phsq;
+		global $deltasq;
+		global $a;
+		global $v;
 
-		// Follow along the steps using: http://www.glicko.net/glicko/glicko2.pdf
 
-		if (count($M) == 0) {
-			$phi_p = sqrt( ( $this->phi * $this->phi ) + ( $this->sigma * $this->sigma ) );
-			return array( 'r' => $this->rating, 'RD' => 173.7178 * $phi_p, 'mu' => $this->mu, 'phi' => $phi_p, 'sigma' => $this->sigma ) ;
+		if (count($this->M) == 0) {
+			$phi_p = sqrt( ( $this->phi * $this->phi ) + ( $this->vol + $this->vol ) );
+			return array( 'r' => $this->rating, 'RD' => 173.7178 * $phi_p, 'mu' => $this->mu, 'phi' => $phi_p, 'vol' => $this->vol ) ;
 		}
 
-		// summation parts of Step 3 & 4 & 7
-		$v_sum = 0;
-		$delta_sum = 0;
-		$mu_p_sum = 0;
-		for ($j = 0; $j < count($M); $j++) {
-			$E = $this->E( $this->mu, $M[$j]['mu'], $M[$j]['phi'] );
-			$g = $this->g( $M[$j]['phi'] );
-			$v_sum +=  ( $g * $g * $E * ( 1 - $E ) );
 
-			$delta_sum += $g * ( $M[$j]['score'] - $E );
-
-			$mu_p_sum += $g * ( $M[$j]['score'] - $E );
-		}
-
-		// Step 3
+		
+		// Step 3 & 4 & 7
 		// Estimated variance
-		$v = 1.0 / $v_sum;
-
-		// Step 4
+		$v = 0;
+		$v_summation = 0;
 		// Estimated improvment in rating
-		$delta = $v * $delta_sum;
+		$delta = 0;
+				
+		// New mu
+		$mu_p = 0;
+
+		$delta_and_mu_p_summation = 0;
+
+		for ($j = 0; $j < count($this->M); $j++) {
+			$E = $this->E( $this->mu, $this->M[$j]['mu'], $this->M[$j]['phi'] );
+			$g = $this->g( $this->M[$j]['phi'] );
+			$v_summation +=   ( $g * $g * $E * ( 1 - $E ) );
+			
+			$delta_and_mu_p_summation += $g * ( $this->M[$j]['score'] - $E );
+		}
+		
+		$v = 1 / $v_summation;
+ 		
+		// Step 4 (finalize)
+		
+		$delta = $v * $delta_and_mu_p_summation;
 
 		// Step 5
-		$a = log( $this->sigma * $this->sigma );
-		$x_prev = $a;
-		$x = $x_prev;
-		$tausq = $this->tau * $this->tau;
-		$phisq = $this->phi * $this->phi;
-		$deltasq = $delta * $delta;
-		do {
-			$exp_xp = exp( $x_prev );
-			$d = $this->phi * $this->phi + $v + $exp_xp;
-			$deltadsq = $deltasq / ($d * $d);
-			$h1 = -( $x_prev - $a ) / ( $tausq ) - ( 0.5 * $exp_xp / $d ) + ( 0.5 * $exp_xp * $deltadsq );
-			$h2 = ( -1.0 / $tausq ) - ( ( 0.5 * $exp_xp ) * ( $phisq + $v ) / ( $d * $d ) ) + ( 0.5 * $deltasq * $exp_xp * ( $phisq + $v - $exp_xp ) / ( $d * $d * $d ) );
-			$tmp_x = $x;
-			$x = $x_prev - ( $h1 / $h2 );
-			$x_prev = $tmp_x;
-		} while (abs($x - $x_prev) > 0.1);
 
-		$sigma_p = exp( $x / 2 );
+		$tausq = $this->tau * $this->tau;
+		$phsq = $this->phi * $this->phi;
+		$deltasq = $delta * $delta;
+
+		$A = $a = log($this->vol * $this->vol);
+		if($deltasq > ($phsq + $v)) {
+			$B = log($deltasq - $phsq - $v);
+		} else {			
+			$k = 1;
+			while($this->f($a - $k * sqrt($tausq)) < 0) {
+				$k++;
+			}
+				$B = $a - $k * sqrt($tausq);
+		}
+
+		
+		$fA = $this->f($A);
+		$fB = $this->f($B);
+
+		$epi = 0.000001;
+
+		while(abs($B-$A) > $epi) {
+			$C = $A + $fA *($A-$B) / ($fB - $fA);
+			$fC = $this->f($C);
+			if($fC*$fB < 0) {
+				$A = $B;
+				$fA = $fB;
+			} else {
+				$fA = $fA / 2;
+			}
+			
+			$B = $C;
+			$fB = $fC;
+		}
+		
+		$vol_p = exp( $A / 2 );
 
 		// Step 6
-		$phi_star = sqrt( $phisq + ( $sigma_p * $sigma_p ) );
+		$phi_star = sqrt( $phsq + ( $vol_p * $vol_p ) );
+		
 
 		// Step 7
 		$phi_p = 1.0 / ( sqrt( ( 1.0 / ( $phi_star * $phi_star ) ) + ( 1.0 / $v ) ) );
-		// New mu
-		$mu_p = $this->mu + $phi_p * $phi_p * $mu_p_sum;
 
-		return array( 'r' => ( 173.7178 * $mu_p ) + 1500, 'RD' => 173.7178 * $phi_p, 'mu' => $mu_p, 'phi' => $phi_p, 'sigma' => $sigma_p );
+		$mu_p = $this->mu + $phi_p * $phi_p * $delta_and_mu_p_summation;
+
+		return array( 'r' => ( 173.7178 * $mu_p ) + 1500, 'RD' => 173.7178 * $phi_p, 'mu' => $mu_p, 'phi' => $phi_p, 'vol' => $vol_p ) ;
 	}
 
+	function f($x) {
+		global $tausq;
+		global $phsq;
+		global $deltasq;
+		global $a;
+		global $v;
+
+	    return ((
+			(exp($x)*($deltasq - $phsq - $v - exp($x))) 
+						/ 
+			(2* pow( ($phsq + $v + exp($x) ),2))
+	    ) - (
+			($x - $a) / $tausq
+	    ));
+	}
+
+	
 	function g($phi) {
-		return 1.0 / ( sqrt( 1.0 + ( 3.0 * $phi * $phi) / ( $this->pi2 ) ) );
+		return 1.0 / ( sqrt( 1.0 + ( 3.0 * $phi * $phi) / ( pi() * pi() ) ) );
 	}
 
 	function E($mu, $mu_j, $phi_j) {
 		return 1.0 / ( 1.0 + exp( -$this->g($phi_j) * ( $mu - $mu_j ) ) );
 	}
 }
+
+?>
