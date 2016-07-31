@@ -86,6 +86,6 @@ PDF Test case (see: http://www.glicko.net/glicko/glicko2.pdf)
 License
 -------
 
-[GNU LGPL version 3.0][3]
+[GNU LGPL version 3.0][4]
 
- [3]: http://www.gnu.org/copyleft/lesser.html
+ [4]: http://www.gnu.org/copyleft/lesser.html
