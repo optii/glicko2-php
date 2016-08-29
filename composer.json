@@ -6,7 +6,7 @@
     "keywords": ["glicko2", "php", "awesome"],
     "homepage": "https://github.com/optii/glicko2-php",
     "time": "2016-08-21",
-    "license": "MIT"
+    "license": "MIT",
     "autoload": {
         "psr-0": {
             "glicko2-php": "class.Glicko2Player.php"}
