@@ -226,6 +226,10 @@ class Glicko2Player {
 	function E($mu, $mu_j, $phi_j) {
 		return 1.0 / ( 1.0 + exp( -$this->g($phi_j) * ( $mu - $mu_j ) ) );
 	}
+	
+	public function getNbMatches(){
+		return count($this->M);
+	}
 }
 
 ?>
